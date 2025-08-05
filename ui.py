@@ -74,7 +74,7 @@ class Ui_MainWindow(object):
         title_label = QLabel("Digitale Stalltafel")
         title_label.setObjectName("TitleLabel")
 
-        subtitle_label = QLabel("Hof Kienhuber")
+        subtitle_label = QLabel("Hof Krenhuber")
         subtitle_label.setObjectName("SubtitleLabel")
 
         title_layout.addWidget(title_label)
