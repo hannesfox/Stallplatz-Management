@@ -1,4 +1,4 @@
-# main.py (korrigiert)
+# main.py
 
 import sys
 from PySide6.QtWidgets import (
@@ -70,7 +70,6 @@ class MainWindow(QMainWindow):
 
     def create_einzelplatz_card(self, platz_nr: int, tier_info: dict | None) -> QFrame:
         card = QFrame()
-        # KORREKTUR HIER:
         card.setObjectName("Card")
         card.setMinimumSize(250, 220)
         self._apply_shadow(card)
@@ -122,7 +121,6 @@ class MainWindow(QMainWindow):
 
     def create_gruppenbox_card(self, box_data: dict) -> QFrame:
         card = QFrame()
-        # KORREKTUR HIER:
         card.setObjectName("Card")
         card.setMinimumWidth(400)
         self._apply_shadow(card)

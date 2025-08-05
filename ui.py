@@ -1,4 +1,4 @@
-# ui.py (korrigiert)
+# ui.py
 
 import sys
 from PySide6.QtCore import (
@@ -74,7 +74,7 @@ class Ui_MainWindow(object):
         title_label = QLabel("Digitale Stalltafel")
         title_label.setObjectName("TitleLabel")
 
-        subtitle_label = QLabel("Hof Krenhuber")
+        subtitle_label = QLabel("Hof Kienhuber")
         subtitle_label.setObjectName("SubtitleLabel")
 
         title_layout.addWidget(title_label)
@@ -201,8 +201,6 @@ class Ui_MainWindow(object):
 
         return page
 
-
-
     def get_stylesheet(self) -> str:
         """Gibt den QSS-Stylesheet-String für die Anwendung zurück."""
         return """
@@ -211,7 +209,13 @@ class Ui_MainWindow(object):
                 background-color: #f0f2f5;
             }
 
-            /* --- Labels --- */
+            /* --- GLOBALE KORREKTUR FÜR macOS & Schriften --- */
+            QLabel {
+                color: #333333; /* Setzt eine dunkle Standard-Textfarbe für alle Labels */
+                background-color: transparent; /* Verhindert unerwünschte Hintergrundfarben auf Labels */
+            }
+
+            /* --- Spezifische Label-Stile (überschreiben die globale Regel) --- */
             #TitleLabel {
                 font-size: 28px;
                 font-weight: bold;
@@ -273,7 +277,7 @@ class Ui_MainWindow(object):
                 background-color: #ecf0f1;
             }
 
-            /* --- KARTEN-DESIGN KORRIGIERT --- */
+            /* --- Karten-Design --- */
             QFrame#Card {
                 background-color: white;
                 border: 1px solid #e0e0e0;
