@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QFrame, QGridLayout, QScrollArea,
     QStackedWidget, QSpacerItem, QSizePolicy,
-    QButtonGroup
+    QButtonGroup, QComboBox
 )
 import qtawesome as qta
 
@@ -118,6 +118,34 @@ class Ui_MainWindow(object):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
+
+        # --- NEUE KARTE: Schlachtdatum-Einstellungen ---
+        card_schlachtdatum = QFrame()
+        card_schlachtdatum.setObjectName("Card")
+        card_schlachtdatum_layout = QVBoxLayout(card_schlachtdatum)
+        card_schlachtdatum_layout.setSpacing(15)
+
+        label_schlachtdatum_title = QLabel("Schlachtdatum berechnen")
+        label_schlachtdatum_title.setObjectName("CardTitle")
+
+        # Layout für Label und Dropdown
+        schlachtdatum_control_layout = QHBoxLayout()
+        label_schlachtdatum = QLabel("Schlachtalter in Monaten:")
+
+        # Das ComboBox (Dropdown) Widget
+        self.schlachtalter_combo = QComboBox()
+        # Fülle das Dropdown mit Werten von 1 bis 24
+        for i in range(1, 25):
+            self.schlachtalter_combo.addItem(f"{i} Monate", userData=i)
+        self.schlachtalter_combo.setFixedWidth(150)  # Feste Breite für besseres Aussehen
+
+        schlachtdatum_control_layout.addWidget(label_schlachtdatum)
+        schlachtdatum_control_layout.addStretch()
+        schlachtdatum_control_layout.addWidget(self.schlachtalter_combo)
+
+        card_schlachtdatum_layout.addWidget(label_schlachtdatum_title)
+        card_schlachtdatum_layout.addLayout(schlachtdatum_control_layout)
+        layout.addWidget(card_schlachtdatum)
 
         # --- Card Einzelplätze ---
         card_einzel = QFrame()
