@@ -111,6 +111,8 @@ class Ui_MainWindow(object):
 
         return header_widget
 
+
+
     def _create_setup_page(self) -> QWidget:
         """Erstellt die Setup-Seite."""
         page = QWidget()
@@ -119,30 +121,24 @@ class Ui_MainWindow(object):
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
 
-        # --- NEUE KARTE: Schlachtdatum-Einstellungen ---
+        # --- Card Schlachtdatum (falls vorhanden, sonst diesen Block weglassen) ---
+        # Dieser Block ist optional, je nachdem, welche Version Sie gerade verwenden.
+        # Wenn Sie die Schlachtdatum-Funktion nicht haben, können Sie ihn einfach ignorieren.
         card_schlachtdatum = QFrame()
         card_schlachtdatum.setObjectName("Card")
         card_schlachtdatum_layout = QVBoxLayout(card_schlachtdatum)
         card_schlachtdatum_layout.setSpacing(15)
-
         label_schlachtdatum_title = QLabel("Schlachtdatum berechnen")
         label_schlachtdatum_title.setObjectName("CardTitle")
-
-        # Layout für Label und Dropdown
         schlachtdatum_control_layout = QHBoxLayout()
         label_schlachtdatum = QLabel("Schlachtalter in Monaten:")
-
-        # Das ComboBox (Dropdown) Widget
-        self.schlachtalter_combo = QComboBox()
-        # Fülle das Dropdown mit Werten von 1 bis 24
+        self.schlachtalter_combo = QComboBox()  # QComboBox muss importiert sein
         for i in range(1, 25):
             self.schlachtalter_combo.addItem(f"{i} Monate", userData=i)
-        self.schlachtalter_combo.setFixedWidth(150)  # Feste Breite für besseres Aussehen
-
+        self.schlachtalter_combo.setFixedWidth(150)
         schlachtdatum_control_layout.addWidget(label_schlachtdatum)
         schlachtdatum_control_layout.addStretch()
         schlachtdatum_control_layout.addWidget(self.schlachtalter_combo)
-
         card_schlachtdatum_layout.addWidget(label_schlachtdatum_title)
         card_schlachtdatum_layout.addLayout(schlachtdatum_control_layout)
         layout.addWidget(card_schlachtdatum)
@@ -161,8 +157,15 @@ class Ui_MainWindow(object):
         self.btn_bestand_einzel.setObjectName("PrimaryButton")
         self.btn_aktualisieren_einzel = QPushButton("Aktualisieren")
         self.btn_aktualisieren_einzel.setObjectName("SecondaryButton")
+
+        # NEUER DRUCKEN-BUTTON
+        self.btn_drucken_einzel = QPushButton("Drucken")
+        self.btn_drucken_einzel.setObjectName("SecondaryButton")
+        self.btn_drucken_einzel.setIcon(qta.icon('fa5s.print', color='#2c3e50'))
+
         btn_layout_einzel.addWidget(self.btn_bestand_einzel)
         btn_layout_einzel.addWidget(self.btn_aktualisieren_einzel)
+        btn_layout_einzel.addWidget(self.btn_drucken_einzel)  # Hinzugefügt
 
         card_einzel_layout.addWidget(label_einzel)
         card_einzel_layout.addLayout(btn_layout_einzel)
@@ -182,8 +185,15 @@ class Ui_MainWindow(object):
         self.btn_bestand_gruppe.setObjectName("PrimaryButton")
         self.btn_aktualisieren_gruppe = QPushButton("Aktualisieren")
         self.btn_aktualisieren_gruppe.setObjectName("SecondaryButton")
+
+        # NEUER DRUCKEN-BUTTON
+        self.btn_drucken_gruppe = QPushButton("Drucken")
+        self.btn_drucken_gruppe.setObjectName("SecondaryButton")
+        self.btn_drucken_gruppe.setIcon(qta.icon('fa5s.print', color='#2c3e50'))
+
         btn_layout_gruppe.addWidget(self.btn_bestand_gruppe)
         btn_layout_gruppe.addWidget(self.btn_aktualisieren_gruppe)
+        btn_layout_gruppe.addWidget(self.btn_drucken_gruppe)  # Hinzugefügt
 
         card_gruppe_layout.addWidget(label_gruppe)
         card_gruppe_layout.addLayout(btn_layout_gruppe)

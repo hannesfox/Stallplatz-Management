@@ -1,23 +1,60 @@
-# main.py (final, mit Schlachtdatum-Funktion)
+# main.py (final, mit korrekter HTML-Interpretation im Druck)
 
 import sys
 from datetime import datetime
-# WICHTIGER NEUER IMPORT für die Datumsberechnung
 from dateutil.relativedelta import relativedelta
 import pandas as pd
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QFrame, QDialog, QTextEdit,
     QMessageBox, QFileDialog, QGraphicsDropShadowEffect,
-    QPlainTextEdit
+    QPlainTextEdit, QCalendarWidget, QDialogButtonBox, QScrollArea, QComboBox
 )
-from PySide6.QtGui import QColor, QPainter, QFont, QTextCursor, QTextFormat
-from PySide6.QtCore import Qt, Signal, QRect, QSize
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
+from PySide6.QtGui import QColor, QPainter, QFont, QTextCursor, QTextFormat, QPixmap, QPageLayout, QTextDocument
+from PySide6.QtCore import Qt, Signal, QRect, QSize, QDate, QPoint
 import qtawesome as qta
 from ui import Ui_MainWindow
 
 
 # Die Klassen für den Editor und den Dialog bleiben unverändert.
+class ClickableLabel(QLabel):
+    clicked = Signal(dict)
+
+    def __init__(self, tier_info: dict, text: str, parent=None):
+        super().__init__(text, parent);
+        self.tier_info = tier_info;
+        self.setToolTip("Klicken, um das Datum zu ändern");
+        self.setCursor(Qt.PointingHandCursor);
+        self.setStyleSheet("QLabel { text-decoration: underline; color: #2980b9; }")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton: self.clicked.emit(self.tier_info)
+
+
+class DateDialog(QDialog):
+    def __init__(self, current_date_str: str, parent=None):
+        super().__init__(parent);
+        self.setWindowTitle("Datum auswählen");
+        self.layout = QVBoxLayout(self);
+        self.calendar = QCalendarWidget(self);
+        self.calendar.setGridVisible(True)
+        try:
+            current_date = QDate.fromString(current_date_str, "dd.MM.yyyy");
+            if current_date.isValid(): self.calendar.setSelectedDate(current_date)
+        except Exception:
+            pass
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel);
+        self.buttonBox.accepted.connect(self.accept);
+        self.buttonBox.rejected.connect(self.reject);
+        self.layout.addWidget(self.calendar);
+        self.layout.addWidget(self.buttonBox)
+
+    def get_selected_date(self) -> str | None:
+        if self.exec() == QDialog.Accepted: return self.calendar.selectedDate().toString("dd.MM.yyyy")
+        return None
+
+
 class LineNumberArea(QWidget):
     def __init__(self, editor): super().__init__(editor); self.codeEditor = editor
 
@@ -141,12 +178,82 @@ class MainWindow(QMainWindow):
         self.ui.btn_bestand_einzel.clicked.connect(self.aufnahme_einzelplaetze_ids);
         self.ui.btn_bestand_gruppe.clicked.connect(self.aufnahme_gruppenboxen_ids);
         self.ui.btn_aktualisieren_einzel.clicked.connect(self.update_einzelplaetze_ui);
-        self.ui.btn_aktualisieren_gruppe.clicked.connect(self.update_gruppenboxen_ui)
-        # NEU: Signal für das Dropdown-Menü verbinden
+        self.ui.btn_aktualisieren_gruppe.clicked.connect(self.update_gruppenboxen_ui);
         self.ui.schlachtalter_combo.currentIndexChanged.connect(self.on_schlachtalter_changed)
+        self.ui.btn_drucken_einzel.clicked.connect(self.handle_print_einzelplaetze);
+        self.ui.btn_drucken_gruppe.clicked.connect(self.handle_print_gruppenboxen)
 
     def switch_page(self, button):
         self.ui.stacked_widget.setCurrentIndex(self.ui.button_group.id(button))
+
+    def handle_print_einzelplaetze(self):
+        if not self.einzelplaetze_processed_data:
+            QMessageBox.warning(self, "Drucken nicht möglich",
+                                "Es wurden noch keine Daten für die Einzelplätze verarbeitet.");
+            return
+        html_content = self.generate_print_html_einzelplaetze()
+        self.print_html(html_content, QPageLayout.Orientation.Landscape)
+
+    def handle_print_gruppenboxen(self):
+        if not self.gruppenboxen_processed_data:
+            QMessageBox.warning(self, "Drucken nicht möglich",
+                                "Es wurden noch keine Daten für die Gruppenboxen verarbeitet.");
+            return
+        html_content = self.generate_print_html_gruppenboxen()
+        self.print_html(html_content, QPageLayout.Orientation.Landscape)
+
+    def generate_print_html_einzelplaetze(self) -> str:
+        header = "<h1>Einzelplätze Übersicht</h1>";
+        table_start = "<table border='1' cellspacing='0' cellpadding='5' width='100%'><tr><th>Platz</th><th>Tier-ID</th><th>Geboren</th><th>Alter</th><th>Schlachtung</th><th>Rasse</th></tr>"
+        rows = []
+        for i, tier in enumerate(self.einzelplaetze_processed_data):
+            platz_nr = i + 1
+            if tier:
+                rows.append(
+                    f"<tr><td>{platz_nr}</td><td>{tier.get('id', '')}</td><td>{tier.get('geburtsdatum', '')}</td><td>{tier.get('alter', '')}</td><td>{tier.get('schlachtdatum', '')}</td><td>{tier.get('rasse', '')}</td></tr>")
+            else:
+                rows.append(f"<tr><td>{platz_nr}</td><td colspan='5'><i>Platz ist frei</i></td></tr>")
+        table_end = "</table>";
+        return f"<html><head><style>table {{ font-family: sans-serif; border-collapse: collapse; }} th, td {{ text-align: left; }}</style></head><body>{header}{table_start}{''.join(rows)}{table_end}</body></html>"
+
+    def generate_print_html_gruppenboxen(self) -> str:
+        header = "<h1>Gruppenboxen Übersicht</h1>";
+        html_parts = [
+            f"<html><head><style>table {{ font-family: sans-serif; border-collapse: collapse; }} th, td {{ text-align: left; }} h2 {{ margin-top: 20px; }}</style></head><body>{header}"]
+        num_boxes = 6;
+        box_slots = 3
+        for i in range(num_boxes):
+            box_nr = i + 1;
+            html_parts.append(f"<h2>Box {box_nr}</h2>");
+            html_parts.append(
+                "<table border='1' cellspacing='0' cellpadding='5' width='100%'><tr><th>Tier-ID</th><th>Geboren</th><th>Alter</th><th>Schlachtung</th><th>Rasse</th></tr>")
+            start_index = i * box_slots;
+            end_index = start_index + box_slots
+            tiere_in_box = [self.gruppenboxen_processed_data[j] for j in range(start_index, end_index) if
+                            j < len(self.gruppenboxen_processed_data) and self.gruppenboxen_processed_data[j]]
+            if not tiere_in_box:
+                html_parts.append("<tr><td colspan='5'><i>Box ist leer</i></td></tr>")
+            else:
+                for tier in tiere_in_box: html_parts.append(
+                    f"<tr><td>{tier.get('id', '')}</td><td>{tier.get('geburtsdatum', '')}</td><td>{tier.get('alter', '')}</td><td>{tier.get('schlachtdatum', '')}</td><td>{tier.get('rasse', '')}</td></tr>")
+            html_parts.append("</table>")
+        html_parts.append("</body></html>");
+        return "".join(html_parts)
+
+    def print_html(self, html_content: str, orientation=QPageLayout.Orientation.Portrait):
+        printer = QPrinter(QPrinter.HighResolution);
+        printer.pageLayout().setOrientation(orientation)
+        preview_dialog = QPrintPreviewDialog(printer, self)
+
+        # --- HIER IST DIE KORREKTUR ---
+        # Erstelle ein Dokument, setze den HTML-Inhalt und drucke dann das Dokument.
+        def paint_html_on_printer(p: QPrinter):
+            doc = QTextDocument()
+            doc.setHtml(html_content)
+            doc.print_(p)
+
+        preview_dialog.paintRequested.connect(paint_html_on_printer)
+        preview_dialog.exec()
 
     def aufnahme_einzelplaetze_ids(self):
         dialog = BestandInputDialog(12, "Einzelplätze", self);
@@ -180,15 +287,21 @@ class MainWindow(QMainWindow):
         self.ui.stacked_widget.setCurrentIndex(1);
         self.ui.btn_gruppenboxen.setChecked(True)
 
-    # NEUE METHODE, die aufgerufen wird, wenn das Dropdown geändert wird
     def on_schlachtalter_changed(self):
-        """Aktualisiert alle Ansichten, wenn ein neues Schlachtalter gewählt wird."""
-        # Nur aktualisieren, wenn bereits Daten vorhanden sind
         if self.einzelplaetze_processed_data:
-            self.reprocess_data(self.einzelplaetze_processed_data)
+            self.reprocess_data(self.einzelplaetze_processed_data);
             self.populate_einzelplaetze()
         if self.gruppenboxen_processed_data:
-            self.reprocess_data(self.gruppenboxen_processed_data)
+            self.reprocess_data(self.gruppenboxen_processed_data);
+            self.populate_gruppenboxen()
+
+    def on_slaughter_date_clicked(self, tier_info: dict):
+        current_date = tier_info.get('schlachtdatum', '');
+        dialog = DateDialog(current_date, self);
+        new_date = dialog.get_selected_date()
+        if new_date:
+            tier_info['schlachtdatum'] = new_date
+            self.populate_einzelplaetze();
             self.populate_gruppenboxen()
 
     def get_csv_path(self) -> str | None:
@@ -204,7 +317,6 @@ class MainWindow(QMainWindow):
             print(f"FEHLER: Konnte CSV-Datei nicht laden: {e}");
             return None
 
-    # ANGEPASSTE METHODE, um Schlachtdatum zu berechnen
     def process_tier_ids(self, ids: list[str], df: pd.DataFrame) -> list[dict | None]:
         processed_data = [];
         for tier_id in ids:
@@ -225,9 +337,7 @@ class MainWindow(QMainWindow):
                 processed_data.append(None)
         return processed_data
 
-    # NEUE METHODE, um Schlachtdaten in bereits verarbeiteten Daten neu zu berechnen
     def reprocess_data(self, data_list: list[dict | None]):
-        """Aktualisiert das Schlachtdatum in einer bestehenden Datenliste."""
         for item in data_list:
             if item and 'geburtsdatum' in item:
                 item['schlachtdatum'] = self._calculate_slaughter_date(item['geburtsdatum'])
@@ -252,18 +362,12 @@ class MainWindow(QMainWindow):
         except (ValueError, TypeError):
             return "N/A"
 
-    # NEUE METHODE zur Berechnung des Schlachtdatums
     def _calculate_slaughter_date(self, birthdate_str: str) -> str:
-        """Berechnet das Schlachtdatum basierend auf dem Dropdown-Wert."""
         if not isinstance(birthdate_str, str): return "N/A"
         try:
             birthdate = datetime.strptime(birthdate_str, "%d.%m.%Y")
-            # Holt die ausgewählten Monate aus dem Dropdown (userData ist der Integer-Wert)
             months_to_add = self.ui.schlachtalter_combo.currentData()
-
-            # Addiert die Monate zum Geburtsdatum
             slaughter_date = birthdate + relativedelta(months=months_to_add)
-
             return slaughter_date.strftime("%d.%m.%Y")
         except (ValueError, TypeError):
             return "N/A"
@@ -299,7 +403,8 @@ class MainWindow(QMainWindow):
             card = self.create_gruppenbox_card(box_data);
             self.ui.gruppenboxen_grid_layout.addWidget(card, row, col)
 
-    def _create_info_row(self, icon_name: str, label: str, value: str) -> QWidget:
+    def _create_info_row(self, icon_name: str, label: str, value: str, tier_info: dict | None = None,
+                         is_clickable: bool = False) -> QWidget:
         row_widget = QWidget();
         row_layout = QHBoxLayout(row_widget);
         row_layout.setContentsMargins(0, 0, 0, 0);
@@ -308,8 +413,12 @@ class MainWindow(QMainWindow):
         icon_label.setPixmap(qta.icon(icon_name, color='#7f8c8d').pixmap(16, 16));
         icon_label.setFixedWidth(20);
         text_label = QLabel(f"{label}");
-        text_label.setFixedWidth(80);
-        value_label = QLabel(f"<b>{value}</b>");
+        text_label.setFixedWidth(80)
+        if is_clickable and tier_info:
+            value_label = ClickableLabel(tier_info, f"<b>{value}</b>");
+            value_label.clicked.connect(self.on_slaughter_date_clicked)
+        else:
+            value_label = QLabel(f"<b>{value}</b>")
         row_layout.addWidget(icon_label);
         row_layout.addWidget(text_label);
         row_layout.addWidget(value_label);
@@ -323,7 +432,6 @@ class MainWindow(QMainWindow):
         shadow.setOffset(0, 3);
         widget.setGraphicsEffect(shadow)
 
-    # ANGEPASSTE METHODE, um Schlachtdatum anzuzeigen
     def create_einzelplatz_card(self, platz_nr: int, tier_info: dict | None) -> QFrame:
         card = QFrame();
         card.setObjectName("Card");
@@ -350,9 +458,8 @@ class MainWindow(QMainWindow):
             layout.addWidget(
                 self._create_info_row('fa5s.calendar-day', '# Geboren', tier_info.get('geburtsdatum', 'N/A')))
             layout.addWidget(self._create_info_row('fa5s.birthday-cake', '# Alter', tier_info.get('alter', 'N/A')))
-            # NEUE ZEILE für Schlachtdatum
-            layout.addWidget(
-                self._create_info_row('fa5s.gavel', '# Schlachtung', tier_info.get('schlachtdatum', 'N/A')))
+            layout.addWidget(self._create_info_row('fa5s.gavel', '# Schlachtung', tier_info.get('schlachtdatum', 'N/A'),
+                                                   tier_info=tier_info, is_clickable=True))
             layout.addWidget(self._create_info_row('fa5s.dna', '# Rasse', tier_info.get('rasse', 'N/A')))
             layout.addWidget(
                 self._create_info_row('fa5s.venus-mars', '# Geschlecht', tier_info.get('geschlecht', 'N/A')))
@@ -366,7 +473,6 @@ class MainWindow(QMainWindow):
             layout.addStretch()
         return card
 
-    # ANGEPASSTE METHODE, um Schlachtdatum anzuzeigen
     def create_gruppenbox_card(self, box_data: dict) -> QFrame:
         card = QFrame();
         card.setObjectName("Card");
@@ -397,9 +503,9 @@ class MainWindow(QMainWindow):
             tier_layout.addWidget(
                 self._create_info_row('fa5s.calendar-day', '# Geboren', tier.get('geburtsdatum', 'N/A')))
             tier_layout.addWidget(self._create_info_row('fa5s.birthday-cake', '# Alter', tier.get('alter', 'N/A')))
-            # NEUE ZEILE für Schlachtdatum
             tier_layout.addWidget(
-                self._create_info_row('fa5s.gavel', '# Schlachtung', tier.get('schlachtdatum', 'N/A')))
+                self._create_info_row('fa5s.gavel', '# Schlachtung', tier.get('schlachtdatum', 'N/A'), tier_info=tier,
+                                      is_clickable=True))
             tier_layout.addWidget(self._create_info_row('fa5s.dna', '# Rasse', tier.get('rasse', 'N/A')))
             layout.addLayout(tier_layout);
             layout.addSpacing(15)
