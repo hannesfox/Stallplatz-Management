@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_NAME: StallplatzManager   # Interner Build-Name ohne Leer-/Sonderzeichen
+  APP_NAME: StallplatzManager
 
 jobs:
   build-and-release:
@@ -108,18 +108,19 @@ jobs:
           main.py
           --name "${APP_NAME}"
           --clean
+          --windowed
           --collect-all qtawesome
+          --collect-all numpy
+          --collect-all pandas
           --hidden-import "PySide6.QtSvg"
           --hidden-import "PySide6.QtNetwork"
           --hidden-import "PySide6.QtPrintSupport"
         )
 
-        # Optional: assets als Daten beilegen, falls vorhanden
         if [ -d "assets" ]; then
           args+=(--add-data "assets${DATA_SEPARATOR}assets")
         fi
 
-        # ICON je OS
         if [ "$RUNNER_OS" == "Windows" ] && [ -f "icon.ico" ]; then
           args+=(--icon "icon.ico")
         elif [ "$RUNNER_OS" == "macOS" ] && [ -f "icon.icns" ]; then
@@ -131,9 +132,6 @@ jobs:
             args+=(--icon "assets/logo.png")
           fi
         fi
-
-        # GUI-Modus (kein Konsolenfenster)
-        args+=(--windowed)
 
         pyinstaller "${args[@]}"
 
