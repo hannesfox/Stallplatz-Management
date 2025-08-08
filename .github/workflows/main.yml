@@ -27,12 +27,17 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Install PyInstaller and Application Dependencies
+    - name: Install PyInstaller and Application Dependencies (pinned)
       run: |
-        python -m pip install --upgrade pip
-        pip install --no-cache-dir pyinstaller==6.8.0
-        pip install --no-cache-dir Pillow
+        python -m pip install --upgrade pip wheel
+        # Pin PyInstaller + hooks-contrib to avoid numpy hiddenimport bug
+        pip install --no-cache-dir "pyinstaller==6.7.0" "pyinstaller-hooks-contrib==2024.10"
+        # App dependencies
         pip install --no-cache-dir -r requirements.txt
+        # Pin numpy/pandas to stable builds for Py 3.12
+        pip install --no-cache-dir "numpy==2.0.1" "pandas==2.2.2" Pillow
+        python -c "import sys,platform; print('Python:', sys.version); print('Platform:', platform.platform())"
+        pip freeze
       timeout-minutes: 10
 
     # Windows: ICO erzeugen
