@@ -1,0 +1,201 @@
+name: Build and Release Stallplatz-Management
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  APP_NAME: StallplatzManager   # Interner Build-Name ohne Leer-/Sonderzeichen
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install PyInstaller and Application Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --no-cache-dir pyinstaller==6.8.0
+        pip install --no-cache-dir Pillow
+        pip install --no-cache-dir -r requirements.txt
+      timeout-minutes: 10
+
+    # Windows: ICO erzeugen
+    - name: Generate Windows Icon (ICO)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $ICON_SOURCE_PNG="assets/logo.png"
+        if (-Not (Test-Path $ICON_SOURCE_PNG)) {
+          Write-Host "assets/logo.png nicht gefunden. Überspringe ICO-Erstellung."
+          exit 0
+        }
+        choco install imagemagick --force --no-progress
+        magick "$ICON_SOURCE_PNG" -resize 256x256 scaled_icon_source.png
+        magick convert scaled_icon_source.png -define icon:autoresize=256,128,64,48,32,16 icon.ico
+        Remove-Item scaled_icon_source.png -ErrorAction SilentlyContinue
+
+    # macOS: ICNS erzeugen
+    - name: Generate macOS Icon (ICNS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        ICON_SOURCE_PNG="assets/logo.png"
+        if [ ! -f "$ICON_SOURCE_PNG" ]; then
+          echo "assets/logo.png nicht gefunden. Überspringe ICNS-Erstellung."
+          exit 0
+        fi
+        mkdir -p icon.iconset
+        sips -z 512 512 "$ICON_SOURCE_PNG" --out scaled_icon_source.png
+        sips -z 16 16 scaled_icon_source.png --out icon.iconset/icon_16x16.png
+        sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_16x16@2x.png
+        sips -z 32 32 scaled_icon_source.png --out icon.iconset/icon_32x32.png
+        sips -z 64 64 scaled_icon_source.png --out icon.iconset/icon_32x32@2x.png
+        sips -z 128 128 scaled_icon_source.png --out icon.iconset/icon_128x128.png
+        sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_128x128@2x.png
+        sips -z 256 256 scaled_icon_source.png --out icon.iconset/icon_256x256.png
+        sips -z 512 512 scaled_icon_source.png --out icon.iconset/icon_256x256@2x.png
+        sips -z 1024 1024 scaled_icon_source.png --out icon.iconset/icon_512x512@2x.png
+        iconutil -c icns icon.iconset -o icon.icns
+        rm -r icon.iconset
+        rm -f scaled_icon_source.png
+
+    # Linux: PNG-Icon erzeugen (falls benötigt)
+    - name: Generate Linux Icon (PNG)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        ICON_SOURCE_PNG="assets/logo.png"
+        if [ ! -f "$ICON_SOURCE_PNG" ]; then
+          echo "assets/logo.png nicht gefunden. Überspringe PNG-Icon-Erstellung."
+          exit 0
+        fi
+        sudo apt-get update
+        sudo apt-get install -y imagemagick
+        convert "$ICON_SOURCE_PNG" -resize 256x256 icon.png
+
+    - name: Extract version from tag
+      id: get_version
+      if: startsWith(github.ref, 'refs/tags/')
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Build Application with PyInstaller
+      timeout-minutes: 25
+      shell: bash
+      run: |
+        APP_VERSION=${{ steps.get_version.outputs.VERSION || 'dev' }}
+        echo "Building version $APP_VERSION for ${RUNNER_OS}"
+
+        DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
+        args=(
+          --noconfirm
+          main.py
+          --name "${APP_NAME}"
+          --clean
+          --collect-all qtawesome
+          --hidden-import "PySide6.QtSvg"
+          --hidden-import "PySide6.QtNetwork"
+          --hidden-import "PySide6.QtPrintSupport"
+        )
+
+        # Optional: assets als Daten beilegen, falls vorhanden
+        if [ -d "assets" ]; then
+          args+=(--add-data "assets${DATA_SEPARATOR}assets")
+        fi
+
+        # ICON je OS
+        if [ "$RUNNER_OS" == "Windows" ] && [ -f "icon.ico" ]; then
+          args+=(--icon "icon.ico")
+        elif [ "$RUNNER_OS" == "macOS" ] && [ -f "icon.icns" ]; then
+          args+=(--icon "icon.icns")
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          if [ -f "icon.png" ]; then
+            args+=(--icon "icon.png")
+          elif [ -f "assets/logo.png" ]; then
+            args+=(--icon "assets/logo.png")
+          fi
+        fi
+
+        # GUI-Modus (kein Konsolenfenster)
+        args+=(--windowed)
+
+        pyinstaller "${args[@]}"
+
+        echo "Dist directory content:"
+        ls -R dist || true
+
+    - name: Prepare Windows Release Artifact
+      if: runner.os == 'Windows'
+      id: prepare_win
+      shell: powershell
+      run: |
+        $APP_VERSION = "${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        $APP_NAME = "${{ env.APP_NAME }}"
+        $SOURCE_PATH = "dist/$APP_NAME"
+        if (!(Test-Path $SOURCE_PATH)) {
+          Write-Error "Build output not found at $SOURCE_PATH"
+        }
+        $ARTIFACT_NAME = "$APP_NAME-v$APP_VERSION-windows.zip"
+        Compress-Archive -Path $SOURCE_PATH -DestinationPath $ARTIFACT_NAME -Force
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Prepare macOS Release Artifact
+      if: runner.os == 'macOS'
+      id: prepare_mac
+      shell: bash
+      run: |
+        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        APP_NAME="${{ env.APP_NAME }}"
+        if [ ! -d "dist/${APP_NAME}.app" ]; then
+          echo "Error: dist/${APP_NAME}.app not found. PyInstaller build failed for macOS?"
+          exit 1
+        fi
+        ARTIFACT_NAME="${APP_NAME}-v${APP_VERSION}-macos.zip"
+        ditto -c -k --sequesterRsrc --keepParent "dist/${APP_NAME}.app" "${ARTIFACT_NAME}"
+        echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Prepare Linux Release Artifact
+      if: runner.os == 'Linux'
+      id: prepare_linux
+      shell: bash
+      run: |
+        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
+        APP_NAME="${{ env.APP_NAME }}"
+        if [ ! -d "dist/${APP_NAME}" ]; then
+          echo "Error: dist/${APP_NAME} not found. PyInstaller build failed for Linux?"
+          exit 1
+        fi
+        ARTIFACT_NAME="${APP_NAME}-v${APP_VERSION}-linux.zip"
+        cd dist
+        zip -r "../${ARTIFACT_NAME}" "${APP_NAME}"
+        cd ..
+        echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-Build-${{ matrix.os }}
+        path: ${{ steps.prepare_win.outputs.ARTIFACT_NAME || steps.prepare_mac.outputs.ARTIFACT_NAME || steps.prepare_linux.outputs.ARTIFACT_NAME }}
+        if-no-files-found: error
+
+    - name: Create GitHub Release (attach this OS artifact)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ steps.prepare_win.outputs.ARTIFACT_NAME || steps.prepare_mac.outputs.ARTIFACT_NAME || steps.prepare_linux.outputs.ARTIFACT_NAME }}
