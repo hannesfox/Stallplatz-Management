@@ -8,9 +8,10 @@ Ein einfaches Programm zur Verwaltung von Stallplätzen für Rinder, aufgeteilt 
 
 ## Installation
 
-1.  Gehen Sie zur [**Releases-Seite**](https://github.com/hannesfox/Stallplatz-Management/releases) dieses Projekts. (Bitte ersetzen Sie den Link durch Ihren eigenen).
-2.  Laden Sie die `.zip`-Datei für Ihr Betriebssystem herunter (`windows`, `macos` oder `linux`).
-3.  Entpacken Sie die Datei. Sie können das Programm nun direkt aus dem entpackten Ordner starten.
+1.  Gehen Sie zur [**Releases-Seite**](https://github.com/hannesfox/Stallplatz-Management/releases).
+2.  Auf Assets Klicken um auszuklappen.
+3.  Laden Sie die `.zip`-Datei für Ihr Betriebssystem herunter (`windows`, `macos` oder `linux`).
+4.  Entpacken Sie die Datei. Sie können das Programm nun direkt aus dem entpackten Ordner starten.
 
 ---
 
@@ -26,15 +27,15 @@ Führen Sie keinen Doppelklick aus. Machen Sie stattdessen einen Rechtsklick auf
 
 ![Rechtsklick auf die App und "Öffnen" wählen](assets/macos_step_1.png)
 
-**2. Erneutes "Öffnen" bestätigen**
+**2. Fehlermeldung wird angezeigt**
 
-Es erscheint ein Dialogfenster, das Sie warnt. Hier haben Sie nun die Möglichkeit, auf "Öffnen" zu klicken. (Diese Option erscheint nicht bei einem normalen Doppelklick).
+Es erscheint eine Fehlermeldung.
 
-*Sollte diese Option nicht erscheinen, klicken Sie auf "Fertig" und fahren Sie mit Schritt 3 fort.*
+*Mit Ferig den Fehler ignorieren.*
 
 ![Dialogfenster, in dem das Öffnen bestätigt wird](assets/macos_step_2.png)
 
-**3. Systemeinstellungen öffnen (falls Schritt 2 nicht klappt)**
+**3. Systemeinstellungen öffnen **
 
 Gehen Sie zu **Systemeinstellungen > Datenschutz & Sicherheit**. Scrollen Sie nach unten zum Abschnitt "Sicherheit".
 
@@ -48,6 +49,6 @@ Sie werden aufgefordert,Benutzernamen natürich Ihren NICHT "hannes" , Ihr Mac-B
 
 ![macOS Benutzerpasswort eingeben](assets/macos_step_5.png)
 
-**5. Fertig!**
+**5. Fertig du bist ein richtiger PRO!**
 
 Das Programm startet nun. Sie müssen diese Schritte **nur beim allerersten Start** durchführen. Danach können Sie die App wie gewohnt per Doppelklick öffnen.
