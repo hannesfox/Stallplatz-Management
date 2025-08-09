@@ -8,7 +8,7 @@ Ein einfaches Programm zur Verwaltung von Stallplätzen für Rinder, aufgeteilt 
 
 ## Installation
 
-1.  Gehen Sie zur [**Releases-Seite**](https://github.com/DEIN_BENUTZERNAME/DEIN_REPO_NAME/releases) dieses Projekts. (Bitte ersetzen Sie den Link durch Ihren eigenen).
+1.  Gehen Sie zur [**Releases-Seite**](https://github.com/hannesfox/Stallplatz-Management/releases) dieses Projekts. (Bitte ersetzen Sie den Link durch Ihren eigenen).
 2.  Laden Sie die `.zip`-Datei für Ihr Betriebssystem herunter (`windows`, `macos` oder `linux`).
 3.  Entpacken Sie die Datei. Sie können das Programm nun direkt aus dem entpackten Ordner starten.
 
