@@ -6,7 +6,8 @@ from PySide6.QtCore import (
     QSize, Qt
 )
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QColor, QPalette
+    QAction, QFont, QIcon, QColor, QPalette, QPixmap,
+    QPainter, QPainterPath  # <- NEUE IMPORTE
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
@@ -23,6 +24,38 @@ class Ui_MainWindow(object):
     Diese Klasse definiert die Benutzeroberfläche des Hauptfensters.
     Sie enthält keine Anwendungslogik.
     """
+
+    # --- NEUE HILFSFUNKTION zum Abrunden der Ecken ---
+    def create_rounded_pixmap(self, source_pixmap: QPixmap, radius: int) -> QPixmap:
+        """
+        Erstellt aus einem Quell-Pixmap ein neues Pixmap mit abgerundeten Ecken.
+        """
+        if source_pixmap.isNull():
+            return QPixmap()
+
+        # Ein neues, leeres Pixmap in der Zielgröße erstellen.
+        # Wichtig: Es muss einen Alphakanal für Transparenz haben.
+        rounded = QPixmap(source_pixmap.size())
+        rounded.fill(Qt.GlobalColor.transparent)  # Transparenter Hintergrund
+
+        # Painter verwenden, um das runde Bild zu zeichnen
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)  # Für glatte Kanten
+
+        # Einen Pfad (eine Form) mit abgerundeten Ecken erstellen
+        path = QPainterPath()
+        path.addRoundedRect(rounded.rect(), radius, radius)
+
+        # Den Painter anweisen, nur innerhalb dieses Pfades zu malen
+        painter.setClipPath(path)
+
+        # Das originale Quellbild in den beschnittenen Bereich zeichnen
+        painter.drawPixmap(0, 0, source_pixmap)
+        painter.end()
+
+        return rounded
+
+    # --- ENDE NEUE HILFSFUNKTION ---
 
     def setupUi(self, MainWindow: QMainWindow):
         if not MainWindow.objectName():
@@ -63,18 +96,43 @@ class Ui_MainWindow(object):
         self.stacked_widget.addWidget(self.page_setup)
 
     def _create_header(self) -> QWidget:
-        """Erstellt die Kopfzeile mit Titel und Navigationsbuttons."""
+        """Erstellt die Kopfzeile mit Logo, Titel und Navigationsbuttons."""
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(15)
 
+        # --- Logo hinzufügen (jetzt mit Abrundung) ---
+        logo_label = QLabel()
+        logo_size = 100  # Deine gewünschte Größe
+
+        # 1. Originales, quadratisches Bild laden
+        source_pixmap = QPixmap("assets/logo.png")
+
+        # 2. Unsere neue Funktion aufrufen, um eine runde Version zu erstellen
+        #    Den Radius (hier 20) kannst du anpassen, je nachdem wie stark die Rundung sein soll.
+        rounded_pixmap = self.create_rounded_pixmap(source_pixmap, 60)
+
+        # 3. Das abgerundete Bild auf die Zielgröße skalieren
+        scaled_pixmap = rounded_pixmap.scaled(
+            logo_size, logo_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
+
+        # 4. Das finale Bild im Label setzen
+        logo_label.setPixmap(scaled_pixmap)
+        logo_label.setFixedSize(logo_size, logo_size)
+
+        header_layout.addWidget(logo_label)
+        # --- Ende Logo ---
+
+        # Titel und Untertitel
         title_layout = QVBoxLayout()
         title_layout.setSpacing(0)
 
         title_label = QLabel("Digitale Stalltafel")
         title_label.setObjectName("TitleLabel")
 
-        subtitle_label = QLabel("Hof Krehuber")
+        subtitle_label = QLabel("Hof Krenhuber")
         subtitle_label.setObjectName("SubtitleLabel")
 
         title_layout.addWidget(title_label)
@@ -83,7 +141,7 @@ class Ui_MainWindow(object):
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
 
-        # Button-Gruppe für exklusives Umschalten
+        # Buttons (unverändert)
         self.button_group = QButtonGroup()
         self.button_group.setExclusive(True)
 
@@ -111,7 +169,7 @@ class Ui_MainWindow(object):
 
         return header_widget
 
-
+    # ... (der Rest der Datei bleibt exakt gleich) ...
 
     def _create_setup_page(self) -> QWidget:
         """Erstellt die Setup-Seite."""
