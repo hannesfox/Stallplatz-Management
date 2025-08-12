@@ -1,12 +1,14 @@
 # ui.py
 
 import sys
+import os
 from PySide6.QtCore import (
     QCoreApplication, QMetaObject, QRect,
     QSize, Qt
 )
 from PySide6.QtGui import (
-    QAction, QFont, QIcon, QColor, QPalette
+    QAction, QFont, QIcon, QColor, QPalette, QPixmap,
+    QPainter, QPainterPath
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
@@ -18,11 +20,46 @@ from PySide6.QtWidgets import (
 import qtawesome as qta
 
 
+def get_base_path() -> str:
+    """
+    Gibt den korrekten Basispfad zurück, egal ob als Skript oder PyInstaller-Bundle ausgeführt.
+    """
+    try:
+        # PyInstaller erstellt einen temporären Ordner und speichert den Pfad in _MEIPASS
+        base_path = sys._MEIPASS  # type: ignore[attr-defined]
+    except AttributeError:
+        # Wenn nicht gebündelt, den Pfad des Skripts verwenden
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return base_path
+
+
 class Ui_MainWindow(object):
     """
     Diese Klasse definiert die Benutzeroberfläche des Hauptfensters.
     Sie enthält keine Anwendungslogik.
     """
+
+    def create_rounded_pixmap(self, source_pixmap: QPixmap, radius: int) -> QPixmap:
+        """
+        Erstellt aus einem Quell-Pixmap ein neues Pixmap mit abgerundeten Ecken.
+        """
+        if source_pixmap.isNull():
+            return QPixmap()
+
+        rounded = QPixmap(source_pixmap.size())
+        rounded.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        path = QPainterPath()
+        path.addRoundedRect(rounded.rect(), radius, radius)
+
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, source_pixmap)
+        painter.end()
+
+        return rounded
 
     def setupUi(self, MainWindow: QMainWindow):
         if not MainWindow.objectName():
@@ -30,13 +67,11 @@ class Ui_MainWindow(object):
         MainWindow.resize(1400, 900)
         MainWindow.setWindowTitle("Digitale Stalltafel")
 
-        # Globale Schriftart und Styling
         font = QFont()
         font.setPointSize(10)
         MainWindow.setFont(font)
         MainWindow.setStyleSheet(self.get_stylesheet())
 
-        # Zentrales Widget und Hauptlayout
         self.central_widget = QWidget(MainWindow)
         self.central_widget.setObjectName("CentralWidget")
         MainWindow.setCentralWidget(self.central_widget)
@@ -45,15 +80,12 @@ class Ui_MainWindow(object):
         self.main_layout.setContentsMargins(20, 10, 20, 20)
         self.main_layout.setSpacing(15)
 
-        # 1. Kopfzeile erstellen und hinzufügen
         self.header_frame = self._create_header()
         self.main_layout.addWidget(self.header_frame)
 
-        # 2. QStackedWidget für die verschiedenen Seiten
         self.stacked_widget = QStackedWidget()
         self.main_layout.addWidget(self.stacked_widget)
 
-        # 3. Die drei Seiten erstellen und zum Stack hinzufügen
         self.page_einzelplaetze = self._create_einzelplaetze_page()
         self.page_gruppenboxen = self._create_gruppenboxen_page()
         self.page_setup = self._create_setup_page()
@@ -63,10 +95,41 @@ class Ui_MainWindow(object):
         self.stacked_widget.addWidget(self.page_setup)
 
     def _create_header(self) -> QWidget:
-        """Erstellt die Kopfzeile mit Titel und Navigationsbuttons."""
+        """Erstellt die Kopfzeile mit Logo, Titel und Navigationsbuttons."""
         header_widget = QWidget()
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(15)
+
+        # --- Logo hinzufügen (mit absolutem Pfad für PyInstaller) ---
+        logo_label = QLabel()
+        logo_size = 100
+
+        # 1. Den korrekten Basispfad ermitteln (funktioniert im Skript & in der App)
+        base_path = get_base_path()
+        logo_path = os.path.join(base_path, "assets", "logo.png")
+
+        # 2. Originales, quadratisches Bild vom absoluten Pfad laden
+        source_pixmap = QPixmap(logo_path)
+
+        # Optional: Prüfen, ob das Laden fehlgeschlagen ist
+        if source_pixmap.isNull():
+            print(f"WARNUNG: Logodatei konnte nicht geladen werden von: {logo_path}")
+
+        # 3. Unsere Funktion aufrufen, um eine runde Version zu erstellen
+        rounded_pixmap = self.create_rounded_pixmap(source_pixmap, 60)
+
+        # 4. Das abgerundete Bild auf die Zielgröße skalieren
+        scaled_pixmap = rounded_pixmap.scaled(
+            logo_size, logo_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+        )
+
+        # 5. Das finale Bild im Label setzen
+        logo_label.setPixmap(scaled_pixmap)
+        logo_label.setFixedSize(logo_size, logo_size)
+
+        header_layout.addWidget(logo_label)
+        # --- Ende Logo-Änderung ---
 
         title_layout = QVBoxLayout()
         title_layout.setSpacing(0)
@@ -74,7 +137,7 @@ class Ui_MainWindow(object):
         title_label = QLabel("Digitale Stalltafel")
         title_label.setObjectName("TitleLabel")
 
-        subtitle_label = QLabel("Hof Krehuber")
+        subtitle_label = QLabel("Hof Krenhuber")
         subtitle_label.setObjectName("SubtitleLabel")
 
         title_layout.addWidget(title_label)
@@ -83,7 +146,6 @@ class Ui_MainWindow(object):
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
 
-        # Button-Gruppe für exklusives Umschalten
         self.button_group = QButtonGroup()
         self.button_group.setExclusive(True)
 
@@ -111,8 +173,6 @@ class Ui_MainWindow(object):
 
         return header_widget
 
-
-
     def _create_setup_page(self) -> QWidget:
         """Erstellt die Setup-Seite."""
         page = QWidget()
@@ -121,9 +181,6 @@ class Ui_MainWindow(object):
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
 
-        # --- Card Schlachtdatum (falls vorhanden, sonst diesen Block weglassen) ---
-        # Dieser Block ist optional, je nachdem, welche Version Sie gerade verwenden.
-        # Wenn Sie die Schlachtdatum-Funktion nicht haben, können Sie ihn einfach ignorieren.
         card_schlachtdatum = QFrame()
         card_schlachtdatum.setObjectName("Card")
         card_schlachtdatum_layout = QVBoxLayout(card_schlachtdatum)
@@ -132,7 +189,7 @@ class Ui_MainWindow(object):
         label_schlachtdatum_title.setObjectName("CardTitle")
         schlachtdatum_control_layout = QHBoxLayout()
         label_schlachtdatum = QLabel("Schlachtalter in Monaten:")
-        self.schlachtalter_combo = QComboBox()  # QComboBox muss importiert sein
+        self.schlachtalter_combo = QComboBox()
         for i in range(1, 25):
             self.schlachtalter_combo.addItem(f"{i} Monate", userData=i)
         self.schlachtalter_combo.setFixedWidth(150)
@@ -143,7 +200,6 @@ class Ui_MainWindow(object):
         card_schlachtdatum_layout.addLayout(schlachtdatum_control_layout)
         layout.addWidget(card_schlachtdatum)
 
-        # --- Card Einzelplätze ---
         card_einzel = QFrame()
         card_einzel.setObjectName("Card")
         card_einzel_layout = QVBoxLayout(card_einzel)
@@ -157,21 +213,17 @@ class Ui_MainWindow(object):
         self.btn_bestand_einzel.setObjectName("PrimaryButton")
         self.btn_aktualisieren_einzel = QPushButton("Aktualisieren")
         self.btn_aktualisieren_einzel.setObjectName("SecondaryButton")
-
-        # NEUER DRUCKEN-BUTTON
         self.btn_drucken_einzel = QPushButton("Drucken")
         self.btn_drucken_einzel.setObjectName("SecondaryButton")
         self.btn_drucken_einzel.setIcon(qta.icon('fa5s.print', color='#2c3e50'))
-
         btn_layout_einzel.addWidget(self.btn_bestand_einzel)
         btn_layout_einzel.addWidget(self.btn_aktualisieren_einzel)
-        btn_layout_einzel.addWidget(self.btn_drucken_einzel)  # Hinzugefügt
+        btn_layout_einzel.addWidget(self.btn_drucken_einzel)
 
         card_einzel_layout.addWidget(label_einzel)
         card_einzel_layout.addLayout(btn_layout_einzel)
         layout.addWidget(card_einzel)
 
-        # --- Card Gruppenboxen ---
         card_gruppe = QFrame()
         card_gruppe.setObjectName("Card")
         card_gruppe_layout = QVBoxLayout(card_gruppe)
@@ -185,15 +237,12 @@ class Ui_MainWindow(object):
         self.btn_bestand_gruppe.setObjectName("PrimaryButton")
         self.btn_aktualisieren_gruppe = QPushButton("Aktualisieren")
         self.btn_aktualisieren_gruppe.setObjectName("SecondaryButton")
-
-        # NEUER DRUCKEN-BUTTON
         self.btn_drucken_gruppe = QPushButton("Drucken")
         self.btn_drucken_gruppe.setObjectName("SecondaryButton")
         self.btn_drucken_gruppe.setIcon(qta.icon('fa5s.print', color='#2c3e50'))
-
         btn_layout_gruppe.addWidget(self.btn_bestand_gruppe)
         btn_layout_gruppe.addWidget(self.btn_aktualisieren_gruppe)
-        btn_layout_gruppe.addWidget(self.btn_drucken_gruppe)  # Hinzugefügt
+        btn_layout_gruppe.addWidget(self.btn_drucken_gruppe)
 
         card_gruppe_layout.addWidget(label_gruppe)
         card_gruppe_layout.addLayout(btn_layout_gruppe)
@@ -216,7 +265,7 @@ class Ui_MainWindow(object):
         return scroll_area, grid_layout
 
     def _create_einzelplaetze_page(self) -> QWidget:
-        """Erstellt die Seite für die Einzelplätze (Platzhalter)."""
+        """Erstellt die Seite für die Einzelplätze."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -228,7 +277,7 @@ class Ui_MainWindow(object):
         return page
 
     def _create_gruppenboxen_page(self) -> QWidget:
-        """Erstellt die Seite für die Gruppenboxen (Platzhalter)."""
+        """Erstellt die Seite für die Gruppenboxen."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)

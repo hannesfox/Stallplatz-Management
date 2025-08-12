@@ -1,5 +1,4 @@
 # main.py
-
 import sys
 import os
 import json
@@ -12,11 +11,12 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QFrame, QDialog, QTextEdit,
     QMessageBox, QFileDialog, QGraphicsDropShadowEffect,
-    QPlainTextEdit, QDialogButtonBox
+    QPlainTextEdit, QDialogButtonBox, QComboBox
 )
 from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
-from PySide6.QtGui import QColor, QPainter, QTextFormat, QTextDocument, QPageLayout
+from PySide6.QtGui import QColor, QPainter, QTextFormat, QTextDocument, QPageLayout, QPalette
 from PySide6.QtCore import Qt, QRect, QSize, QSettings
+from PySide6.QtCore import QSizeF  # wichtig für Druckseiten-Größe
 import qtawesome as qta
 from ui import Ui_MainWindow
 
@@ -24,11 +24,6 @@ from ui import Ui_MainWindow
 # --- Globale Konfiguration & Pfade ---
 
 def get_base_path() -> str:
-    """
-    Ermittelt den Basispfad für den Zugriff auf Ressourcendateien.
-    Funktioniert sowohl im Entwicklungsmodus als auch in einer
-    mit PyInstaller gebündelten Anwendung.
-    """
     try:
         base_path = sys._MEIPASS  # type: ignore[attr-defined]
     except AttributeError:
@@ -39,7 +34,6 @@ def get_base_path() -> str:
 ORG_NAME = "RinderApp"
 APP_NAME = "Bestandsmanager"
 
-# App-Datenordner (per appdirs) und State-Datei
 DATA_DIR = user_data_dir(APP_NAME, ORG_NAME)
 STATE_FILE = os.path.join(DATA_DIR, "state.json")
 
@@ -60,8 +54,7 @@ REQUIRED_COLUMNS = {
 }
 
 
-# --- WIEDERVERWENDBARE KLASSEN ---
-
+# --- WIEDERVERWENDBARE KLASSEN (unchanged) ---
 class LineNumberArea(QWidget):
     def __init__(self, editor):
         super().__init__(editor)
@@ -88,7 +81,7 @@ class NumberedTextEdit(QPlainTextEdit):
         digits = 1
         count = max(1, self.blockCount())
         while count >= 10:
-            count //= 10  # int division to avoid float
+            count //= 10
             digits += 1
         return 10 + self.fontMetrics().horizontalAdvance('9') * digits
 
@@ -183,9 +176,9 @@ class BestandInputDialog(QDialog):
         extra_hint = ""
         if count > self.required_lines:
             extra_hint = " (es werden die ersten Zeilen verwendet)"
-            self.status_label.setStyleSheet("color: #e67e22;")  # orange Hinweis
+            self.status_label.setStyleSheet("color: #e67e22;")
         elif count == self.required_lines:
-            self.status_label.setStyleSheet("color: #2ecc71;")  # grün OK
+            self.status_label.setStyleSheet("color: #2ecc71;")
         else:
             self.status_label.setStyleSheet("color: #7f8c8d;")
         self.status_label.setText(f"{count} / {self.required_lines} Zeilen{extra_hint}")
@@ -196,7 +189,6 @@ class BestandInputDialog(QDialog):
         if len(lines) < self.required_lines:
             QMessageBox.warning(self, "Unvollständig", f"Bitte genau {self.required_lines} Zeilen eingeben.")
             return
-        # Nur die ersten N Zeilen verwenden
         self.final_data = lines[:self.required_lines]
         self.accept()
 
@@ -206,14 +198,14 @@ class BestandInputDialog(QDialog):
         return None
 
 
-# --- HAUPTKLASSE ---
+# --- HAUPTKLASSE (meiste Logik unverändert, nur kleine Anpassungen) ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
-        # feste Fenstergröße
+        # feste Fenstergröße (du hattest das so)
         self.resize(1950, 950)
 
         self.einzelplaetze_raw_ids: list[str] = []
@@ -239,6 +231,7 @@ class MainWindow(QMainWindow):
         self.ui.btn_bestand_gruppe.clicked.connect(self.aufnahme_gruppenboxen_ids)
         self.ui.btn_aktualisieren_einzel.clicked.connect(self.update_einzelplaetze_ui)
         self.ui.btn_aktualisieren_gruppe.clicked.connect(self.update_gruppenboxen_ui)
+        # schachtalter_combo ist QComboBox in deinem UI; sicherstellen, dass signal passt
         self.ui.schlachtalter_combo.currentIndexChanged.connect(self.on_schlachtalter_changed)
         self.ui.btn_drucken_einzel.clicked.connect(self.handle_print_einzelplaetze)
         self.ui.btn_drucken_gruppe.clicked.connect(self.handle_print_gruppenboxen)
@@ -293,7 +286,7 @@ class MainWindow(QMainWindow):
         return (
             "<html><head>"
             "<style>"
-            "body { font-family: sans-serif; }"
+            "body { font-family: Arial, Helvetica, sans-serif; }"
             "table { border-collapse: collapse; }"
             "th, td { text-align: left; }"
             "</style>"
@@ -306,7 +299,7 @@ class MainWindow(QMainWindow):
         header = "<h1>Gruppenboxen Übersicht</h1>"
         html_parts = [
             "<html><head><style>"
-            "body { font-family: sans-serif; }"
+            "body { font-family: Arial, Helvetica, sans-serif; }"
             "table { border-collapse: collapse; }"
             "th, td { text-align: left; }"
             "h2 { margin-top: 20px; }"
@@ -358,16 +351,25 @@ class MainWindow(QMainWindow):
         printer.setPageLayout(layout)
 
         preview_dialog = QPrintPreviewDialog(printer, self)
+        # modal und sauber verhalten auf macOS
+        preview_dialog.setWindowModality(Qt.ApplicationModal)
+        preview_dialog.setAttribute(Qt.WA_DeleteOnClose, True)
 
         def paint_html_on_printer(p: QPrinter):
             doc = QTextDocument()
             doc.setHtml(html_content)
+            # Wichtig: Seitengröße setzen, sonst wird auf macOS oft nur Teil gerendert
+            try:
+                doc.setPageSize(QSizeF(p.pageRect().size()))
+            except Exception:
+                pass
             doc.print_(p)
 
         preview_dialog.paintRequested.connect(paint_html_on_printer)
+        # exec() ist in PySide6 vorhanden; open() kann auf macOS manchmal "freundlicher" sein
         preview_dialog.exec()
 
-    # --- Datenaufnahme/Update ---
+    # --- Datenaufnahme/Update (unverändert) ---
     def aufnahme_einzelplaetze_ids(self):
         dialog = BestandInputDialog(NUM_EINZELPLAETZE, "Einzelplätze", self)
         ids = dialog.get_data()
@@ -427,7 +429,7 @@ class MainWindow(QMainWindow):
         if changed:
             self.save_state()
 
-    # --- CSV/ID Verarbeitung ---
+    # --- CSV/ID Verarbeitung (unverändert) ---
     def get_csv_path(self) -> str | None:
         start_dir = self.settings.value("last_csv_dir", "")
         file_path, _ = QFileDialog.getOpenFileName(self, "CSV-Datei auswählen", start_dir, "CSV-Dateien (*.csv)")
@@ -652,9 +654,11 @@ class MainWindow(QMainWindow):
         return row_widget
 
     def _apply_shadow(self, widget: QWidget):
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(25)
-        shadow.setColor(QColor(0, 0, 0, 35))
+        # use widget as parent for the effect to avoid odd artifacts on macOS
+        shadow = QGraphicsDropShadowEffect(widget)
+        shadow.setBlurRadius(20)
+        # slightly increased alpha to get a softer, non-black artifacting shadow
+        shadow.setColor(QColor(0, 0, 0, 80))
         shadow.setOffset(0, 3)
         widget.setGraphicsEffect(shadow)
 
@@ -662,6 +666,8 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("Card")
         card.setMinimumSize(250, 240)
+        # ensure an explicit background so macOS native will not bleed through
+        card.setStyleSheet("QFrame#Card { background-color: #ffffff; border: 1px solid #e6e9ea; border-radius: 10px; }")
         self._apply_shadow(card)
 
         layout = QVBoxLayout(card)
@@ -714,6 +720,8 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("Card")
         card.setMinimumWidth(400)
+        # explicit background to avoid macOS blending artifacts
+        card.setStyleSheet("QFrame#Card { background-color: #ffffff; border: 1px solid #e6e9ea; border-radius: 10px; }")
         self._apply_shadow(card)
 
         layout = QVBoxLayout(card)
@@ -768,8 +776,119 @@ class MainWindow(QMainWindow):
         return card
 
 
+# --- Plattform-spezifische Fixes (macOS) ---
+def apply_platform_fixes(app: QApplication):
+    """
+    Anwenden von Fixes, die auf macOS nötig sind, damit das UI nicht
+    plötzlich dunkle/transparent-mit-schwarzem-Background-Fehler zeigt.
+    """
+    if sys.platform == "darwin":
+        # Erzwinge Fusion-Style (verhält sich auf macOS konsistenter)
+        try:
+            app.setStyle("Fusion")
+        except Exception:
+            pass
+
+        # Leichte, konsistente Light-Palette
+        pal = QPalette()
+        pal.setColor(QPalette.ColorRole.Window, QColor("#f3f6f7"))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor("#1a2b2f"))
+        pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f7f9fa"))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor("#000000"))
+        pal.setColor(QPalette.ColorRole.Text, QColor("#1a2b2f"))
+        pal.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor("#1a2b2f"))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor("#67c7ff"))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        app.setPalette(pal)
+
+        # VERBESSERTES Globales Stylesheet mit SVG-Pfeil für ComboBox
+        app.setStyleSheet("""
+            QComboBox {
+                background-color: #ffffff;
+                color: #222222;
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                /* Mehr Platz rechts für den Pfeil schaffen */
+                padding: 6px 25px 6px 8px;
+                min-height: 20px;
+                font-size: 13px;
+                selection-background-color: #e3f2fd;
+            }
+
+            QComboBox:hover {
+                border-color: #a0a0a0;
+                background-color: #f8f8f8;
+            }
+
+            QComboBox:focus {
+                border-color: #007acc;
+                background-color: #ffffff;
+                outline: none;
+            }
+
+            QComboBox::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 25px; /* Breite des klickbaren Bereichs für den Pfeil */
+                border-left-width: 1px;
+                border-left-color: #d0d0d0;
+                border-left-style: solid;
+                border-top-right-radius: 6px;
+                border-bottom-right-radius: 6px;
+                /* Der Hintergrund des Pfeil-Bereichs kann transparent sein */
+                background: transparent;
+            }
+
+            QComboBox::drop-down:hover {
+                 background-color: #e8e8e8;
+            }
+
+            /*******************************************************
+             * WICHTIGSTE ÄNDERUNG: Pfeil als SVG-Icon           *
+             * Dies ist viel zuverlässiger als der Border-Trick. *
+             *******************************************************/
+            QComboBox::down-arrow {
+                image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1.41 0L6 4.58L10.59 0L12 1.41L6 7.41L0 1.41L1.41 0Z' fill='%23666666'/></svg>");
+                width: 12px;
+                height: 8px;
+            }
+
+            /* Dropdown-Liste Styling */
+            QComboBox QAbstractItemView {
+                background-color: #ffffff;
+                color: #222222;
+                selection-background-color: #e3f2fd;
+                selection-color: #000000;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                padding: 2px;
+                outline: none;
+            }
+
+            QComboBox QAbstractItemView::item {
+                padding: 6px 8px;
+                border: none;
+                min-height: 18px;
+            }
+
+            QComboBox QAbstractItemView::item:hover {
+                background-color: #f0f8ff;
+                color: #000000;
+            }
+
+            QComboBox QAbstractItemView::item:selected {
+                background-color: #e3f2fd;
+                color: #000000;
+            }
+        """)
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    apply_platform_fixes(app)  # wichtige macOS-Fixes anwenden
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
