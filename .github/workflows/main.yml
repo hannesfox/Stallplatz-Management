@@ -1,4 +1,4 @@
-name: Build and Release Stallplatz-Management
+name: Build and Release Stallplatz-Management1
 
 on:
   push:
