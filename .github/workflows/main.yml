@@ -15,8 +15,21 @@ jobs:
   build-and-release:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - os_name: Windows
+            os_runner: windows-latest
+            target_id: windows
+          - os_name: macOS (Apple Silicon)
+            os_runner: macos-latest
+            target_id: macos-arm64
+          - os_name: macOS (Intel)
+            os_runner: macos-13
+            target_id: macos-intel
+          - os_name: Linux
+            os_runner: ubuntu-latest
+            target_id: linux
+
+    runs-on: ${{ matrix.os_runner }}
 
     steps:
     - name: Checkout code
@@ -80,7 +93,7 @@ jobs:
         rm -r icon.iconset
         rm -f scaled_icon_source.png
 
-    # Linux: PNG-Icon erzeugen (falls benötigt)
+    # Linux: PNG-Icon erzeugen
     - name: Generate Linux Icon (PNG)
       if: runner.os == 'Linux'
       shell: bash
@@ -105,7 +118,7 @@ jobs:
       shell: bash
       run: |
         APP_VERSION=${{ steps.get_version.outputs.VERSION || 'dev' }}
-        echo "Building version $APP_VERSION for ${RUNNER_OS}"
+        echo "Building version $APP_VERSION for ${{ matrix.os_name }} (${RUNNER_OS})"
 
         DATA_SEPARATOR=$([ "$RUNNER_OS" == "Windows" ] && echo ";" || echo ":")
         args=(
@@ -143,62 +156,34 @@ jobs:
         echo "Dist directory content:"
         ls -R dist || true
 
-    - name: Prepare Windows Release Artifact
-      if: runner.os == 'Windows'
-      id: prepare_win
-      shell: powershell
-      run: |
-        $APP_VERSION = "${{ steps.get_version.outputs.VERSION || 'dev' }}"
-        $APP_NAME = "${{ env.APP_NAME }}"
-        $SOURCE_PATH = "dist/$APP_NAME"
-        if (!(Test-Path $SOURCE_PATH)) {
-          Write-Error "Build output not found at $SOURCE_PATH"
-        }
-        $ARTIFACT_NAME = "$APP_NAME-v$APP_VERSION-windows.zip"
-        Compress-Archive -Path $SOURCE_PATH -DestinationPath $ARTIFACT_NAME -Force
-        echo "ARTIFACT_NAME=$ARTIFACT_NAME" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-    - name: Prepare macOS Release Artifact
-      if: runner.os == 'macOS'
-      id: prepare_mac
+    - name: Prepare Release Artifact
+      id: prepare_artifact
       shell: bash
       run: |
         APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
-        APP_NAME="${{ env.APP_NAME }}"
-        if [ ! -d "dist/${APP_NAME}.app" ]; then
-          echo "Error: dist/${APP_NAME}.app not found. PyInstaller build failed for macOS?"
-          exit 1
-        fi
-        ARTIFACT_NAME="${APP_NAME}-v${APP_VERSION}-macos.zip"
-        ditto -c -k --sequesterRsrc --keepParent "dist/${APP_NAME}.app" "${ARTIFACT_NAME}"
+        ARTIFACT_NAME="${{ env.APP_NAME }}-v${APP_VERSION}-${{ matrix.target_id }}.zip"
         echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
 
-    - name: Prepare Linux Release Artifact
-      if: runner.os == 'Linux'
-      id: prepare_linux
-      shell: bash
-      run: |
-        APP_VERSION="${{ steps.get_version.outputs.VERSION || 'dev' }}"
-        APP_NAME="${{ env.APP_NAME }}"
-        if [ ! -d "dist/${APP_NAME}" ]; then
-          echo "Error: dist/${APP_NAME} not found. PyInstaller build failed for Linux?"
-          exit 1
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          powershell -Command "Compress-Archive -Path 'dist/${{ env.APP_NAME }}' -DestinationPath '${ARTIFACT_NAME}' -Force"
+        elif [ "${{ runner.os }}" == "macOS" ]; then
+          ditto -c -k --sequesterRsrc --keepParent "dist/${{ env.APP_NAME }}.app" "${ARTIFACT_NAME}"
+        elif [ "${{ runner.os }}" == "Linux" ]; then
+          cd dist
+          zip -r "../${ARTIFACT_NAME}" "${{ env.APP_NAME }}"
+          cd ..
         fi
-        ARTIFACT_NAME="${APP_NAME}-v${APP_VERSION}-linux.zip"
-        cd dist
-        zip -r "../${ARTIFACT_NAME}" "${APP_NAME}"
-        cd ..
-        echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+        echo "Created artifact: ${ARTIFACT_NAME}"
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.APP_NAME }}-Build-${{ matrix.os }}
-        path: ${{ steps.prepare_win.outputs.ARTIFACT_NAME || steps.prepare_mac.outputs.ARTIFACT_NAME || steps.prepare_linux.outputs.ARTIFACT_NAME }}
+        name: ${{ env.APP_NAME }}-Build-${{ matrix.target_id }}
+        path: ${{ steps.prepare_artifact.outputs.ARTIFACT_NAME }}
         if-no-files-found: error
 
-    - name: Create GitHub Release (attach this OS artifact)
+    - name: Create GitHub Release (attach artifacts)
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: ${{ steps.prepare_win.outputs.ARTIFACT_NAME || steps.prepare_mac.outputs.ARTIFACT_NAME || steps.prepare_linux.outputs.ARTIFACT_NAME }}
+        files: ${{ steps.prepare_artifact.outputs.ARTIFACT_NAME }}
